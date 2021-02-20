@@ -10,12 +10,12 @@ import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
-import java.io.PrintWriter;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
@@ -26,7 +26,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     public static final int SERVERPORT = 3003;
     public static final String SERVER_IP = "192.168.0.11";
-    
+
     private ClientThread clientThread;
     private Thread thread;
     private LinearLayout msgList;
@@ -59,12 +59,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     }
 
     public void showMessage(final String message, final int color) {
-        handler.post(new Runnable() {
-            @Override
-            public void run() {
-                msgList.addView(textView(message, color));
-            }
-        });
+        handler.post(() -> msgList.addView(textView(message, color)));
     }
 
     @Override
@@ -92,7 +87,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     class ClientThread implements Runnable {
 
         private Socket socket;
-        private BufferedReader input;
+        private DataInputStream dataInputStream;
 
         @Override
         public void run() {
@@ -103,9 +98,12 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
                 while (!Thread.currentThread().isInterrupted()) {
 
-                    this.input = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-                    String message = input.readLine();
-                    if (null == message || "Disconnect".contentEquals(message)) {
+                    dataInputStream = new DataInputStream(socket.getInputStream());
+                    String messageFromClient = dataInputStream.readUTF();
+                    final JSONObject jsondata = new JSONObject(messageFromClient);
+                    String message = jsondata.getString("id") + "-" + jsondata.getString("message");
+
+                    if ("Disconnect".contentEquals(message)) {
                         Thread.interrupted();
                         message = "Server Disconnected.";
                         showMessage(message, Color.RED);
@@ -118,24 +116,28 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 e1.printStackTrace();
             } catch (IOException e1) {
                 e1.printStackTrace();
+            } catch (JSONException e) {
+                e.printStackTrace();
             }
 
         }
 
+        private int _globalId = 0;
+
         void sendMessage(final String message) {
-            new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        if (null != socket) {
-                            PrintWriter out = new PrintWriter(new BufferedWriter(
-                                    new OutputStreamWriter(socket.getOutputStream())),
-                                    true);
-                            out.println(message);
-                        }
-                    } catch (Exception e) {
-                        e.printStackTrace();
+            new Thread(() -> {
+                try {
+                    if (null != socket) {
+
+                        final JSONObject jsonData = new JSONObject();
+                        jsonData.put("id", _globalId++);
+                        jsonData.put("message", message);
+
+                        DataOutputStream dataOutputStream = new DataOutputStream(socket.getOutputStream());
+                        dataOutputStream.writeUTF(jsonData.toString());
                     }
+                } catch (Exception e) {
+                    e.printStackTrace();
                 }
             }).start();
         }
