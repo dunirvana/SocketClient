@@ -12,6 +12,8 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 class ClientThread implements Runnable {
 
@@ -35,8 +37,14 @@ class ClientThread implements Runnable {
         ((IMessage)_context).showMessage(message, color);
     }
 
+    private void reconnectToServer() {
+        ((IMessage)_context).connectToServer();
+    }
+
     @Override
     public void run() {
+
+        AtomicBoolean disconnected = new AtomicBoolean(false);
 
         try {
             InetAddress serverAddr = InetAddress.getByName(_serverIp);
@@ -47,14 +55,28 @@ class ClientThread implements Runnable {
                 _dataInputStream = new DataInputStream(_socket.getInputStream());
                 String messageFromClient = _dataInputStream.readUTF();
                 final JSONObject jsondata = new JSONObject(messageFromClient);
-                String message = jsondata.getString("id") + "-" + jsondata.getString("message");
+                AtomicReference<String> message = new AtomicReference<>(jsondata.getString("id") + "-" + jsondata.getString("message"));
 
-                if ("Disconnect".contentEquals(message)) {
-                    message = "Server Disconnected.";
-                    showMessage(message, Color.RED);
+                if ("Disconnect".contentEquals(message.get())) {
+                    disconnected.set(true);
+                    message.set("Server Disconnected.");
+                    showMessage(message.get(), Color.RED);
                     break;
                 }
-                showMessage("Server: " + message, _clientTextColor);
+
+                if (!jsondata.has("isConfirmationMessage") || jsondata.getString("isConfirmationMessage") != "true") {
+
+                    // se nao for uma mensagem de confirmacao coloca texto no display
+                    showMessage("Server: " + message, _clientTextColor);
+
+                    // envia para o servidor a confirmacao
+                    sendMessage("Cliente recebeu mensagem: " + jsondata.getString("id"), true);
+                }
+                else {
+                    _lastMessageSentConfirmed = 'Y';
+
+                }
+
             }
 
         } catch (UnknownHostException e1) {
@@ -65,11 +87,21 @@ class ClientThread implements Runnable {
             e.printStackTrace();
         }
 
+        if (disconnected.get())
+            reconnectToServer();
     }
 
     private int _globalId = 0;
 
-    void sendMessage(final String message) {
+    private char _lastMessageSentConfirmed = '-';
+
+    void sendMessage(final String message, boolean isConfirmationMessage) {
+
+        if (_lastMessageSentConfirmed == 'N' && !isConfirmationMessage) {
+            showMessage("A ultima mensagem nao foi entregue, realize nova conexao com o servidor", Color.MAGENTA);
+            return;
+        }
+
         new Thread(() -> {
             try {
                 if (null != _socket) {
@@ -77,9 +109,13 @@ class ClientThread implements Runnable {
                     final JSONObject jsonData = new JSONObject();
                     jsonData.put("id", _globalId++);
                     jsonData.put("message", message);
+                    jsonData.put("isConfirmationMessage", isConfirmationMessage);
 
                     DataOutputStream dataOutputStream = new DataOutputStream(_socket.getOutputStream());
                     dataOutputStream.writeUTF(jsonData.toString());
+
+                    // se for uma mensagem de confirmacao de recebimento significa que o servidor esta acessivel, entao liberar novas tentativas de envio
+                    _lastMessageSentConfirmed = isConfirmationMessage ? '-' : 'N';
                 }
             } catch (Exception e) {
                 e.printStackTrace();

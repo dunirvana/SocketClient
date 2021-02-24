@@ -10,15 +10,6 @@ import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
 
-import org.json.JSONException;
-import org.json.JSONObject;
-
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.net.InetAddress;
-import java.net.Socket;
-import java.net.UnknownHostException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
@@ -66,21 +57,27 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     public void onClick(View view) {
 
         if (view.getId() == R.id.connect_server) {
-            msgList.removeAllViews();
-            showMessage("Connecting to Server...", clientTextColor);
-            clientThread = new ClientThread(MainActivity.this, SERVER_IP, SERVERPORT, clientTextColor);
-            thread = new Thread(clientThread);
-            thread.start();
-            showMessage("Connected to Server...", clientTextColor);
-            return;
+            connectToServer();
+        } else if (view.getId() == R.id.send_data) {
+            sendMessage();
         }
+    }
 
-        if (view.getId() == R.id.send_data) {
-            String clientMessage = edMessage.getText().toString().trim();
-            showMessage(clientMessage, Color.BLUE);
-            if (null != clientThread) {
-                clientThread.sendMessage(clientMessage);
-            }
+    public void connectToServer() {
+
+        msgList.removeAllViews();
+        showMessage("Connecting to Server...", clientTextColor);
+        clientThread = new ClientThread(MainActivity.this, SERVER_IP, SERVERPORT, clientTextColor);
+        thread = new Thread(clientThread);
+        thread.start();
+        showMessage("Connected to Server...", clientTextColor);
+    }
+
+    private void sendMessage() {
+        String clientMessage = edMessage.getText().toString().trim();
+        showMessage(clientMessage, Color.BLUE);
+        if (null != clientThread) {
+            clientThread.sendMessage(clientMessage, false);
         }
     }
 
@@ -93,7 +90,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     protected void onDestroy() {
         super.onDestroy();
         if (null != clientThread) {
-            clientThread.sendMessage("Disconnect");
+            clientThread.sendMessage("Disconnect", false);
             clientThread = null;
         }
     }
