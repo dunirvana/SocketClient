@@ -53,7 +53,10 @@ class ClientThread implements Runnable {
             while (!Thread.currentThread().isInterrupted()) {
 
                 _dataInputStream = new DataInputStream(_socket.getInputStream());
-                String messageFromClient = _dataInputStream.readUTF();
+
+                //String messageFromClient = _dataInputStream.readUTF();
+                String messageFromClient = Cryptography.decrypt(_dataInputStream.readUTF(), null);
+
                 final JSONObject jsondata = new JSONObject(messageFromClient);
                 AtomicReference<String> message = new AtomicReference<>(jsondata.getString("id") + "-" + jsondata.getString("message"));
 
@@ -85,6 +88,8 @@ class ClientThread implements Runnable {
             e1.printStackTrace();
         } catch (JSONException e) {
             e.printStackTrace();
+        } catch (Exception e) {
+            e.printStackTrace();
         }
 
         if (disconnected.get())
@@ -112,7 +117,10 @@ class ClientThread implements Runnable {
                     jsonData.put("isConfirmationMessage", isConfirmationMessage);
 
                     DataOutputStream dataOutputStream = new DataOutputStream(_socket.getOutputStream());
-                    dataOutputStream.writeUTF(jsonData.toString());
+
+                    String jsonEncrypted = Cryptography.encrypt(jsonData.toString(), null);
+
+                    dataOutputStream.writeUTF(jsonEncrypted);
 
                     // se for uma mensagem de confirmacao de recebimento significa que o servidor esta acessivel, entao liberar novas tentativas de envio
                     _lastMessageSentConfirmed = isConfirmationMessage ? '-' : 'N';
